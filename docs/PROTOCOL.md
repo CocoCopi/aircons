@@ -47,7 +47,7 @@ before mapping yaw/pitch/roll.
 
 - `0x04` — battery. Entry count is at offset 6; entries are 5 bytes starting at offset 7:
   component id, status, level, status, flags. Component `0x02` = right, `0x04` = left,
-  `0x08` = case. Status `0x01` means charging.
+  `0x08` = case. Status `0x01` and `0x05` mean charging.
 - `0x06` — ear detection. Bytes 6 and 7 are primary/secondary; `0x00` means in ear.
 - `0x19` — stem press. Byte 6 is the press type (`0x05` single, `0x06` double,
   `0x07` triple, `0x08` long); byte 7 is the bud (`0x01` left, `0x02` right).

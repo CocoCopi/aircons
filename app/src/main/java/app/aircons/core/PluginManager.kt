@@ -78,12 +78,18 @@ object PluginManager {
                 val parsed = mutableListOf<PluginInfo>()
                 for (i in 0 until plugins.length()) {
                     val item = plugins.getJSONObject(i)
+                    val id = item.getString("id")
+                    val file = item.getString("file")
+                    if (!safeSegment(id) || !safeSegment(file)) {
+                        log("Skipped unsafe script entry '${id}/${file}'.")
+                        continue
+                    }
                     val info = PluginInfo(
-                        id = item.getString("id"),
+                        id = id,
                         name = item.getString("name"),
                         version = item.optString("version", "1"),
                         description = item.optString("description", ""),
-                        file = item.getString("file")
+                        file = file
                     )
                     val source = httpText(RAW_BASE + "plugins/" + info.file)
                     val target = File(scriptsDir(), info.id + ".js")
@@ -96,7 +102,7 @@ object PluginManager {
                     .putString("manifest", manifestText)
                     .apply()
                 _manifestVersion.value = manifest.version
-                _available.value = listOf(BUILTIN) + parsed
+                _available.value = listOf(BUILTIN) + parsed + customInfo()
                 log("Synced ${parsed.size} scripts (manifest v${manifest.version}).")
             } catch (t: Throwable) {
                 log("Sync failed: ${t.localizedMessage ?: t.javaClass.simpleName}")
@@ -215,7 +221,7 @@ object PluginManager {
             val cx = RhinoContext.enter()
             try {
                 cx.setOptimizationLevel(-1)
-                val newScope = cx.initStandardObjects()
+                val newScope = cx.initSafeStandardObjects()
                 cx.evaluateString(newScope, source, label, 1, null)
                 val fn = newScope.get("map", newScope)
                 if (fn !is Function) throw IllegalArgumentException("script must define map(input)")
@@ -284,6 +290,24 @@ object PluginManager {
         } catch (_: Throwable) {
         }
     }
+
+    private fun customInfo(): List<PluginInfo> {
+        val custom = File(scriptsDir(), "custom.js")
+        if (!custom.exists()) return emptyList()
+        return listOf(
+            PluginInfo(
+                id = "custom",
+                name = "Live custom",
+                version = "local",
+                description = "Written in the AirCons lab.",
+                file = "custom.js"
+            )
+        )
+    }
+
+    private fun safeSegment(value: String): Boolean =
+        value.isNotBlank() && value.length <= 40 && value.matches(Regex("[A-Za-z0-9._-]+")) &&
+            !value.contains("..")
 
     private fun scriptsDir(): File = File(appContext.filesDir, "plugins").also { it.mkdirs() }
 

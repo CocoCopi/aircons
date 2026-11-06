@@ -42,17 +42,21 @@ function map(input) {
 ## Build
 
 The APK is built by GitHub Actions and published as a rolling release tagged `latest`.
-Every push to `main` produces a debug APK and a new version number. The app checks the
-latest GitHub release on launch and offers an in-app download/install.
+Every push to `main` produces a release APK and a new version number. Builds use a
+persistent signing key stored in GitHub Actions secrets, so in-app updates install over
+the previous version instead of requiring an uninstall. The app checks the latest
+GitHub release on launch and offers an in-app download/install.
 
 Local build:
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
-Requirements: JDK 17 and Android SDK 35. Debug builds are installable directly; this
-project intentionally has no production signing configuration.
+Requirements: JDK 17 and Android SDK 35. For a signed local release, export
+`AIRCONS_STORE_FILE`, `AIRCONS_STORE_PASSWORD`, `AIRCONS_KEY_ALIAS` and
+`AIRCONS_KEY_PASSWORD` first. Without them, `assembleDebug` falls back to the local
+Android debug key.
 
 ## Permissions
 

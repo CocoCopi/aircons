@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import app.aircons.data.Bud
@@ -21,6 +22,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 import java.io.IOException
 
 class AapClient(
@@ -67,6 +69,7 @@ class AapClient(
 
     private var packetWindowStart = 0L
     private var packetWindowCount = 0
+    private var hiddenApiPrepared = false
 
     @SuppressLint("MissingPermission")
     fun connect(device: BluetoothDevice, alternatePackets: Boolean) {
@@ -263,7 +266,7 @@ class AapClient(
                 0x19 -> {
                     if (offset + 8 > chunk.size) return
                     handleStem(chunk, offset)
-                    offset = chunk.size
+                    offset += 8
                 }
 
                 0x09 -> {
@@ -320,7 +323,7 @@ class AapClient(
             val component = data[cursor].toInt() and 0xFF
             val level = data[cursor + 2].toInt() and 0xFF
             val status = data[cursor + 3].toInt() and 0xFF
-            val charging = status == 0x01
+            val charging = status == 0x01 || status == 0x05
             when (component) {
                 0x02 -> {
                     right = level
@@ -375,33 +378,94 @@ class AapClient(
 
     private fun readLe16(data: ByteArray, index: Int): Int {
         if (index + 1 >= data.size) return 0
-        return (data[index].toInt() and 0xFF) or ((data[index + 1].toInt() and 0xFF) shl 8)
+        return (data[index].toInt() and 0xFF) or (data[index + 1].toInt() shl 8)
     }
 
+    private data class SocketAttempt(
+        val label: String,
+        val args: Array<Any?>,
+        val types: Array<Class<*>>
+    )
+
     private fun createL2capSocket(adapter: BluetoothAdapter, device: BluetoothDevice): BluetoothSocket {
+        prepareHiddenApi()
         val uuid = ParcelUuid.fromString(AapPackets.SERVICE_UUID)
         val type = 3
-        val specs = listOf(
-            arrayOf(adapter, device, type, true, true, AapPackets.PSM, uuid),
-            arrayOf(device, type, true, true, AapPackets.PSM, uuid),
-            arrayOf(device, type, 1, true, true, AapPackets.PSM, uuid),
-            arrayOf(type, 1, true, true, device, AapPackets.PSM, uuid),
-            arrayOf(type, true, true, device, AapPackets.PSM, uuid)
+        val psm = AapPackets.PSM
+
+        runCatching {
+            val socket = HiddenApiBypass.invoke(
+                BluetoothDevice::class.java,
+                device,
+                "createL2capSocket",
+                psm
+            ) as? BluetoothSocket
+            if (socket != null) return socket
+        }
+
+        val attempts = listOf(
+            socketAttempt("direct PSM", type, -1, true, true, device, psm, null),
+            socketAttempt("direct PSM + UUID", type, -1, true, true, device, psm, uuid),
+            socketAttempt("A16 adapter-first", adapter, device, type, true, true, psm, uuid),
+            socketAttempt("device-first", device, type, true, true, psm, uuid),
+            socketAttempt("device fd-first", device, type, -1, true, true, psm, uuid),
+            socketAttempt("legacy fd-one", type, 1, true, true, device, psm, uuid),
+            socketAttempt("five-arg", type, true, true, device, psm, uuid),
+            socketAttempt("device-first direct", device, type, true, true, psm, null)
         )
-        var last: Throwable? = null
-        for (params in specs) {
+        val failures = mutableListOf<String>()
+        for (attempt in attempts) {
             try {
-                val types = params.map {
-                    it::class.javaPrimitiveType ?: it::class.java
-                }.toTypedArray()
-                val constructor = BluetoothSocket::class.java.getDeclaredConstructor(*types)
-                constructor.isAccessible = true
-                return constructor.newInstance(*params) as BluetoothSocket
+                val socket = HiddenApiBypass.newInstance(
+                    BluetoothSocket::class.java,
+                    *attempt.args
+                ) as? BluetoothSocket
+                if (socket != null) return socket
+                failures += "${attempt.label}: not a BluetoothSocket"
             } catch (t: Throwable) {
-                last = t
+                failures += "${attempt.label}: ${t.javaClass.simpleName}"
+                try {
+                    val constructor = BluetoothSocket::class.java
+                        .getDeclaredConstructor(*attempt.types)
+                    constructor.isAccessible = true
+                    return constructor.newInstance(*attempt.args) as BluetoothSocket
+                } catch (direct: Throwable) {
+                    if (failures.size == 1) {
+                        failures[0] = "${attempt.label}: ${direct.javaClass.simpleName}"
+                    }
+                }
             }
         }
-        throw last ?: IllegalStateException("No compatible L2CAP socket constructor")
+        Log.e(TAG, "L2CAP socket attempts: ${failures.joinToString("; ")}")
+        throw IllegalStateException(
+            "Android ${Build.VERSION.RELEASE} blocked the private Classic L2CAP socket. " +
+                "Please report this build with a logcat capture."
+        )
+    }
+
+    private fun prepareHiddenApi() {
+        if (hiddenApiPrepared) return
+        hiddenApiPrepared = true
+        runCatching {
+            HiddenApiBypass.addHiddenApiExemptions(
+                "Landroid/bluetooth/BluetoothSocket;",
+                "Landroid/bluetooth/BluetoothDevice;"
+            )
+        }.onFailure {
+            Log.w(TAG, "Hidden API exemption failed: ${it.message}")
+        }
+    }
+
+    private fun socketAttempt(label: String, vararg values: Any?): SocketAttempt {
+        val types = values.map<Any?, Class<*>> { value ->
+            when (value) {
+                is Int -> Int::class.javaPrimitiveType!!
+                is Boolean -> Boolean::class.javaPrimitiveType!!
+                null -> ParcelUuid::class.java
+                else -> value.javaClass
+            }
+        }.toTypedArray()
+        return SocketAttempt(label, arrayOf(*values), types)
     }
 
     companion object {

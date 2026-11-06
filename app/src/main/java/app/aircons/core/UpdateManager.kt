@@ -26,18 +26,31 @@ object UpdateManager {
             val root = JSONObject(text)
             if (root.has("message")) return@runCatching null
             val assets = root.optJSONArray("assets") ?: return@runCatching null
-            var apkUrl: String? = null
-            var size = 0L
+            var bestUrl: String? = null
+            var bestSize = 0L
+            var bestVersion = -1L
+            var bestCreated = ""
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val name = asset.optString("name", "")
-                if (name.endsWith(".apk", ignoreCase = true)) {
-                    apkUrl = asset.optString("browser_download_url", null)
-                    size = asset.optLong("size", 0L)
-                    break
+                if (!name.endsWith(".apk", ignoreCase = true)) continue
+                val url = asset.optString("browser_download_url", null) ?: continue
+                val version = Regex("""(\d+)(?=\.apk$)""")
+                    .find(name)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: -1L
+                val created = asset.optString("created_at", "")
+                val better = when {
+                    bestUrl == null -> true
+                    version != bestVersion -> version > bestVersion
+                    else -> created > bestCreated
+                }
+                if (better) {
+                    bestUrl = url
+                    bestSize = asset.optLong("size", 0L)
+                    bestVersion = version
+                    bestCreated = created
                 }
             }
-            val url = apkUrl ?: return@runCatching null
+            val url = bestUrl ?: return@runCatching null
             val publishedAt = runCatching {
                 Instant.parse(root.optString("published_at", "")).toEpochMilli()
             }.getOrDefault(0L)
@@ -46,7 +59,7 @@ object UpdateManager {
                 name = root.optString("name", "AirCons latest"),
                 notes = root.optString("body", ""),
                 apkUrl = url,
-                sizeBytes = size,
+                sizeBytes = bestSize,
                 publishedAt = publishedAt
             )
         }

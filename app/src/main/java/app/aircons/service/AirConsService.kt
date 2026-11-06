@@ -236,6 +236,11 @@ class AirConsService : Service() {
     override fun onDestroy() {
         runCatching { client.destroy() }
         scope.cancel()
+        if (SessionBus.sessionActive.value) {
+            SessionBus.setSessionActive(false)
+            SessionBus.setLink(LinkState.IDLE)
+            SessionBus.resetSession()
+        }
         super.onDestroy()
     }
 
