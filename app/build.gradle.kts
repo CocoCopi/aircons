@@ -103,7 +103,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.mozilla:rhino:1.7.15")
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
