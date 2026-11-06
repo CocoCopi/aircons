@@ -15,6 +15,13 @@
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+    </queries>
+
     <application
         android:name=".AirConsApp"
         android:allowBackup="true"
@@ -65,11 +72,5 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <queries>
-            <intent>
-                <action android:name="android.intent.action.VIEW" />
-                <data android:mimeType="application/vnd.android.package-archive" />
-            </intent>
-        </queries>
     </application>
 </manifest>
