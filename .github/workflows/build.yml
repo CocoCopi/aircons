@@ -1,0 +1,62 @@
+name: Build AirCons
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aircons-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          EPOCH=$(date +%s)
+          ./gradlew --no-daemon assembleDebug \
+            -PairconsVersionCode=${GITHUB_RUN_NUMBER} \
+            -PairconsVersionName=1.0.${GITHUB_RUN_NUMBER} \
+            -PairconsBuildEpoch=${EPOCH}
+
+      - name: Stage APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk "out/AirCons-${GITHUB_RUN_NUMBER}.apk"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirCons-APK
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Publish rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: AirCons 1.0.${{ github.run_number }}
+          body: |
+            Automated build of `${{ github.sha }}`.
+
+            Version `1.0.${{ github.run_number }}` · built from the `main` branch.
+            Download the APK below, or update from inside the app.
+          files: out/*.apk
+          make_latest: true

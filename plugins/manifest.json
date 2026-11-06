@@ -1,0 +1,26 @@
+{
+  "version": 3,
+  "plugins": [
+    {
+      "id": "head",
+      "name": "Headline curve",
+      "version": "1.0",
+      "description": "Head aim with a softer center and a predictable edge.",
+      "file": "head.js"
+    },
+    {
+      "id": "sidearm",
+      "name": "Sidearm snap",
+      "version": "1.0",
+      "description": "A tighter one-pod curve with a fast flick response.",
+      "file": "sidearm.js"
+    },
+    {
+      "id": "wheel",
+      "name": "Wheel bank",
+      "version": "1.0",
+      "description": "Bank steering with pitch throttle and a small center hold.",
+      "file": "wheel.js"
+    }
+  ]
+}

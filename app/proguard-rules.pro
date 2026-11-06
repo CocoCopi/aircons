@@ -1,0 +1,3 @@
+-keep class org.mozilla.javascript.** { *; }
+-dontwarn org.mozilla.javascript.**
+-keep class app.aircons.aap.** { *; }

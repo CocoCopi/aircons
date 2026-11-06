@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AirCons</string>
+    <string name="accessibility_service_label">AirCons Game Input</string>
+    <string name="accessibility_description">Turns AirPods motion and stem presses into touch input for games. AirCons only injects the gestures you configure.</string>
+    <string name="notification_channel_name">Controller session</string>
+    <string name="notification_channel_description">Shows the active AirCons controller and its battery state.</string>
+</resources>
