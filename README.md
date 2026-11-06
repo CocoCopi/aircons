@@ -79,5 +79,6 @@ Android debug key.
 
 AirCons is licensed under **GPL-3.0-or-later**. Protocol research builds on the public
 [LibrePods](https://github.com/librepods-org/librepods) project (GPLv3) and the wider
-reverse-engineering work around Apple's Accessory Protocol. AirPods is a trademark of
-Apple Inc. AirCons is not affiliated with or endorsed by Apple.
+reverse-engineering work around Apple's Accessory Protocol. The hidden-API bridge uses
+[AndroidHiddenApiBypass](https://github.com/LSPosed/AndroidHiddenApiBypass) (Apache-2.0).
+AirPods is a trademark of Apple Inc. AirCons is not affiliated with or endorsed by Apple.

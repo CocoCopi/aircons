@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -101,6 +102,7 @@ fun HomeScreen(
     var devices by remember { mutableStateOf<List<BondedDevice>>(emptyList()) }
     var bluetoothGranted by remember { mutableStateOf(hasBluetoothConnect(context)) }
     var refresh by remember { mutableIntStateOf(0) }
+    val liveScript by SessionBus.script.collectAsState()
 
     val bluetoothLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -299,7 +301,7 @@ fun HomeScreen(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Scripts live: ${SessionBus.script.value}  ·  pack ${pps} Hz",
+                    "Scripts live: $liveScript  ·  pack ${pps} Hz",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted
                 )
