@@ -45,6 +45,7 @@ import app.aircons.ui.screens.HomeScreen
 import app.aircons.ui.screens.LabScreen
 import app.aircons.ui.screens.ModeScreen
 import app.aircons.ui.screens.SettingsScreen
+import app.aircons.ui.theme.Cobalt
 import app.aircons.ui.theme.Ink
 import app.aircons.ui.theme.Paper
 import app.aircons.ui.theme.Surface
@@ -125,7 +126,7 @@ fun AirConsRoot() {
     fun startSession(mode: ControlMode) {
         selectedModeKey = mode.key
         settingsStore.setMode(mode)
-        if (!hasBluetoothConnect(context)) {
+        if (!settingsStore.state.value.phoneMotion && !hasBluetoothConnect(context)) {
             pendingMode = mode
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 bluetoothStartLauncher.launch(
@@ -270,6 +271,28 @@ fun AirConsRoot() {
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(10.dp))
+                val canFallback = error?.let {
+                    it.contains("AirPods control link", ignoreCase = true) ||
+                        it.contains("Phone motion", ignoreCase = true) ||
+                        it.contains("No AirPods", ignoreCase = true)
+                } == true
+                if (canFallback) {
+                    Text(
+                        "USE PHONE",
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Cobalt)
+                            .clickable {
+                                settingsStore.update { it.copy(phoneMotion = true) }
+                                SessionBus.clearError()
+                                startSession(ControlMode.fromKey(selectedModeKey))
+                            }
+                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Paper
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(
                     "DISMISS",
                     modifier = Modifier

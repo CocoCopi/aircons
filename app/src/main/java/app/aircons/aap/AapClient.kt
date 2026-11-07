@@ -170,7 +170,7 @@ class AapClient(
         return if (api >= 37) {
             "Timed out opening the AirPods control link on $phone (Android ${Build.VERSION.RELEASE}, " +
                 "API $api). Android 17 should support this. Check that no iPhone is holding the " +
-                "AirPods, keep both pods out of the case, then try again. " +
+                "AirPods, wear both pods, then try again. " +
                 "Or enable Settings → Phone motion fallback to play now."
         } else {
             "Timed out opening the AirPods control link on $phone (Android ${Build.VERSION.RELEASE}, " +
