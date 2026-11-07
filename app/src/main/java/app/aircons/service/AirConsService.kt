@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -161,6 +162,14 @@ class AirConsService : Service() {
 
         startInjectionLoop()
         watchSettings()
+
+        if (!isAudioConnected(device)) {
+            fail(
+                "${device.safeName() ?: "AirPods"} are paired but not connected. " +
+                    "Open Bluetooth, tap the AirPods to connect, then press Start again."
+            )
+            return
+        }
 
         SessionBus.setLink(LinkState.CONNECTING, "Opening L2CAP 4097")
         updateNotification()
@@ -343,6 +352,21 @@ class AirConsService : Service() {
     }
 
     private fun BluetoothDevice.safeName(): String? = runCatching { name }.getOrNull()
+
+    private fun isAudioConnected(device: BluetoothDevice): Boolean {
+        val manager = getSystemService(BluetoothManager::class.java) ?: return true
+        return runCatching {
+            listOf(
+                BluetoothProfile.A2DP,
+                BluetoothProfile.HEADSET,
+                BluetoothProfile.GATT
+            ).any { profile ->
+                manager.getConnectedDevices(profile).any {
+                    it.address.equals(device.address, ignoreCase = true)
+                }
+            }
+        }.getOrDefault(true)
+    }
 
     private val clientListener = object : AapClient.Listener {
         override fun onLink(message: String?) {

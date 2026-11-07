@@ -24,6 +24,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AapClient(
     private val context: Context,
@@ -78,13 +79,29 @@ class AapClient(
         running = true
         alternate = alternatePackets
         listener.onLink("Opening L2CAP 4097")
+        val timedOut = AtomicBoolean(false)
         worker = scope.launch {
             try {
                 val adapter = context.getSystemService(BluetoothManager::class.java).adapter
                     ?: throw IllegalStateException("This phone has no Bluetooth adapter.")
                 val newSocket = createL2capSocket(adapter, device)
                 socket = newSocket
-                newSocket.connect()
+                val timeoutJob = scope.launch {
+                    delay(CONNECT_TIMEOUT_MS)
+                    if (!newSocket.isConnected) {
+                        timedOut.set(true)
+                        Log.w(TAG, "L2CAP connect timed out; closing socket")
+                        runCatching { newSocket.close() }
+                    }
+                }
+                try {
+                    newSocket.connect()
+                } finally {
+                    timeoutJob.cancel()
+                }
+                if (!newSocket.isConnected) {
+                    throw IOException("socket did not connect")
+                }
                 listener.onLink("AAP link open")
                 openSession()
                 readLoop(newSocket)
@@ -94,11 +111,18 @@ class AapClient(
                 }
             } catch (e: Throwable) {
                 if (generation == session && running) {
-                    val detail = e.localizedMessage ?: e.javaClass.simpleName
-                    fail(
-                        "Could not open the AirPods control link ($detail). " +
-                            "Make sure the pods are connected to this phone and not owned by another device."
-                    )
+                    if (timedOut.get()) {
+                        fail(
+                            "Timed out opening the AirPods control link. Wake the pods, " +
+                                "connect them for audio in Bluetooth settings, then try again."
+                        )
+                    } else {
+                        val detail = e.localizedMessage ?: e.javaClass.simpleName
+                        fail(
+                            "Could not open the AirPods control link ($detail). " +
+                                "Make sure the pods are connected to this phone and not owned by another device."
+                        )
+                    }
                 }
             } finally {
                 if (generation == session) running = false
@@ -470,5 +494,6 @@ class AapClient(
 
     companion object {
         private const val TAG = "AirConsAap"
+        private const val CONNECT_TIMEOUT_MS = 12_000L
     }
 }
