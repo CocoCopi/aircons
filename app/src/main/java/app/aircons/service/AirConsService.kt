@@ -186,13 +186,20 @@ class AirConsService : Service() {
 
     private fun startPhoneMotion() {
         phoneMotion?.stop()
-        val source = PhoneMotionSource(this) { sample ->
-            engine.onPhoneMotion(sample)
-            if (SessionBus.link.value != LinkState.STREAMING) {
-                SessionBus.setLink(LinkState.STREAMING, "Phone motion")
+        val source = PhoneMotionSource(
+            this,
+            onSample = { sample ->
+                engine.onPhoneMotion(sample)
+                if (SessionBus.link.value != LinkState.STREAMING) {
+                    SessionBus.setLink(LinkState.STREAMING, "Phone motion")
+                    updateNotification()
+                }
+            },
+            onRate = { rate ->
+                SessionBus.setPps(rate)
                 updateNotification()
             }
-        }
+        )
         phoneMotion = source
         SessionBus.setDevice("This phone")
         SessionBus.clearError()

@@ -22,6 +22,23 @@ The motion is calibrated from a short neutral sample, smoothed, mapped into a
 `ControlFrame`, and injected by an `AccessibilityService` through `dispatchGesture`.
 A foreground service keeps the session alive while the game is in front.
 
+## Android compatibility and fallback
+
+Apple's AAP motion channel uses a Classic L2CAP socket on PSM `4097`. Some Android
+Bluetooth stacks still reject that channel because of a channel-mode negotiation bug
+tracked as Google issue `371713238`. AirCons first tries the public Android 17 socket
+API, then the hidden insecure L2CAP socket, then secure variants. If every attempt
+times out, the phone's Bluetooth stack is the blocker, not the mapping code.
+
+AirPods motion works without root on Android 17, Pixel Android 16 builds with the
+April 2026+ Bluetooth update, and OxygenOS/ColorOS 16. Other Android 16 and older
+builds need the stack fixed by the OEM, or root with the Xposed/Magisk L2CAP fix.
+
+For those phones, AirCons includes a **Phone motion fallback** in Settings. It uses
+the phone's rotation-vector sensor with the same three modes and the same touch
+injection, so aiming and steering work immediately. AirPods stem presses and battery
+telemetry remain unavailable in fallback mode because they require AAP.
+
 ## Dynamic source
 
 The mapping layer is not baked into the APK. AirCons can fetch the latest

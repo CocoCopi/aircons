@@ -10,7 +10,8 @@ import kotlin.math.abs
 
 class PhoneMotionSource(
     context: Context,
-    private val onSample: (MotionSample) -> Unit
+    private val onSample: (MotionSample) -> Unit,
+    private val onRate: (Int) -> Unit = {}
 ) : SensorEventListener {
     private val manager = context.getSystemService(SensorManager::class.java)
     private val sensor: Sensor? =
@@ -24,6 +25,8 @@ class PhoneMotionSource(
     private var smoothYaw = 0f
     private var smoothPitch = 0f
     private var smoothRoll = 0f
+    private var rateStart = 0L
+    private var rateCount = 0
 
     fun start(): Boolean {
         val active = sensor ?: return false
@@ -32,6 +35,8 @@ class PhoneMotionSource(
         smoothYaw = 0f
         smoothPitch = 0f
         smoothRoll = 0f
+        rateStart = 0L
+        rateCount = 0
         return manager.registerListener(this, active, SensorManager.SENSOR_DELAY_GAME)
     }
 
@@ -45,6 +50,8 @@ class PhoneMotionSource(
         smoothYaw = 0f
         smoothPitch = 0f
         smoothRoll = 0f
+        rateStart = 0L
+        rateCount = 0
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -70,6 +77,13 @@ class PhoneMotionSource(
         smoothRoll += (roll - smoothRoll) * alpha
 
         if (abs(smoothYaw) < 0.02f) smoothYaw = 0f
+        if (rateStart == 0L) rateStart = now
+        rateCount++
+        if (now - rateStart >= 1000L) {
+            onRate(((rateCount * 1000L) / (now - rateStart)).toInt())
+            rateStart = now
+            rateCount = 0
+        }
         onSample(
             MotionSample(
                 yaw = smoothYaw,
