@@ -139,7 +139,7 @@ class HudOverlay(private val service: AccessibilityService) {
 
             val batteryText = battery.minimum?.let {
                 "L ${battery.left ?: "--"}  R ${battery.right ?: "--"}  $pps Hz"
-            } ?: "awaiting telemetry"
+            } ?: if (link == LinkState.STREAMING) "phone motion  $pps Hz" else "awaiting telemetry"
             tinyPaint.color = Color.parseColor("#6F6A61")
             canvas.drawText(batteryText, width - 150f * density, top + 16f * density, tinyPaint)
 

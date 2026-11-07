@@ -416,7 +416,15 @@ private fun ConnectionCard(
             )
 
             Spacer(Modifier.height(18.dp))
-            BatteryCluster(battery)
+            if (settings.phoneMotion) {
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    MiniStat("Source", "Phone gyro")
+                    MiniStat("Rate", "$pps Hz")
+                    MiniStat("Trigger", "Game button")
+                }
+            } else {
+                BatteryCluster(battery)
+            }
             Spacer(Modifier.height(16.dp))
 
             if (!bluetoothGranted) {
