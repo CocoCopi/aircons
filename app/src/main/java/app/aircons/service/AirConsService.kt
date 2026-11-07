@@ -23,6 +23,7 @@ import app.aircons.MainActivity
 import app.aircons.R
 import app.aircons.aap.AapClient
 import app.aircons.core.ControllerEngine
+import app.aircons.core.PhoneMotionSource
 import app.aircons.core.PluginManager
 import app.aircons.data.ControlMode
 import app.aircons.data.LinkState
@@ -78,6 +79,7 @@ class AirConsService : Service() {
     private lateinit var settings: SettingsStore
     private lateinit var engine: ControllerEngine
     private lateinit var client: AapClient
+    private var phoneMotion: PhoneMotionSource? = null
 
     private var injectionJob: Job? = null
     private var settingsJob: Job? = null
@@ -104,6 +106,7 @@ class AirConsService : Service() {
             }
 
             ACTION_RECENTER -> {
+                phoneMotion?.recenter()
                 engine.recenter()
                 return START_NOT_STICKY
             }
@@ -147,6 +150,14 @@ class AirConsService : Service() {
             if (settings.state.value.scriptsEnabled) settings.state.value.activePluginId else "builtin"
         )
 
+        startInjectionLoop()
+        watchSettings()
+
+        if (settings.state.value.phoneMotion) {
+            startPhoneMotion()
+            return
+        }
+
         val device = resolveDevice()
         if (device == null) {
             fail(
@@ -160,9 +171,6 @@ class AirConsService : Service() {
             settings.setTarget(device.address, device.safeName())
         }
 
-        startInjectionLoop()
-        watchSettings()
-
         if (!isAudioConnected(device)) {
             fail(
                 "${device.safeName() ?: "AirPods"} are paired but not connected. " +
@@ -174,6 +182,31 @@ class AirConsService : Service() {
         SessionBus.setLink(LinkState.CONNECTING, "Opening L2CAP 4097")
         updateNotification()
         client.connect(device, settings.state.value.alternatePackets)
+    }
+
+    private fun startPhoneMotion() {
+        phoneMotion?.stop()
+        val source = PhoneMotionSource(this) { sample ->
+            engine.onPhoneMotion(sample)
+            if (SessionBus.link.value != LinkState.STREAMING) {
+                SessionBus.setLink(LinkState.STREAMING, "Phone motion")
+                updateNotification()
+            }
+        }
+        phoneMotion = source
+        SessionBus.setDevice("This phone")
+        SessionBus.clearError()
+        if (!source.start()) {
+            phoneMotion = null
+            fail(
+                "This phone has no usable rotation sensor. Turn off Phone motion fallback " +
+                    "and connect the AirPods instead."
+            )
+            return
+        }
+        SessionBus.setLink(LinkState.STREAMING, "Phone motion")
+        SessionBus.setCalibration(app.aircons.data.CalibrationState.READY)
+        updateNotification()
     }
 
     private fun startInjectionLoop() {
@@ -212,6 +245,8 @@ class AirConsService : Service() {
     }
 
     private fun stopSession() {
+        phoneMotion?.stop()
+        phoneMotion = null
         runCatching { client.stopTracking() }
         client.close()
         injectionJob?.cancel()
@@ -228,6 +263,8 @@ class AirConsService : Service() {
     }
 
     private fun fail(message: String) {
+        phoneMotion?.stop()
+        phoneMotion = null
         SessionBus.setError(message)
         SessionBus.setSessionActive(false)
         client.close()
@@ -243,6 +280,8 @@ class AirConsService : Service() {
     }
 
     override fun onDestroy() {
+        phoneMotion?.stop()
+        phoneMotion = null
         runCatching { client.destroy() }
         scope.cancel()
         if (SessionBus.sessionActive.value) {

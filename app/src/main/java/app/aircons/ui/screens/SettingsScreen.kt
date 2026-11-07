@@ -220,6 +220,12 @@ fun SettingsScreen(
                 ) { value -> onUpdateSettings { it.copy(alternatePackets = value) } }
                 Hairline()
                 ToggleLine(
+                    "Phone motion fallback",
+                    "Use this phone's gyroscope when Android blocks the AirPods control link.",
+                    settings.phoneMotion
+                ) { value -> onUpdateSettings { it.copy(phoneMotion = value) } }
+                Hairline()
+                ToggleLine(
                     "Check updates on launch",
                     "Show a quiet update pill when a newer build exists.",
                     settings.checkUpdatesOnLaunch

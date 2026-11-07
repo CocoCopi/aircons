@@ -170,12 +170,14 @@ class AapClient(
         return if (api >= 37) {
             "Timed out opening the AirPods control link on $phone (Android ${Build.VERSION.RELEASE}, " +
                 "API $api). Android 17 should support this. Check that no iPhone is holding the " +
-                "AirPods, keep both pods out of the case, then try again."
+                "AirPods, keep both pods out of the case, then try again. " +
+                "Or enable Settings → Phone motion fallback to play now."
         } else {
             "Timed out opening the AirPods control link on $phone (Android ${Build.VERSION.RELEASE}, " +
                 "API $api). This Android build appears to be missing Google's March 2026 Bluetooth " +
                 "L2CAP fix. AirPods motion needs Android 17, Pixel Android 16 with the April 2026+ " +
-                "update, OxygenOS/ColorOS 16, or a rooted device with Xposed."
+                "update, OxygenOS/ColorOS 16, or a rooted device with Xposed. " +
+                "Or enable Settings → Phone motion fallback to play now."
         }
     }
 

@@ -25,6 +25,7 @@ data class AppSettings(
     val fireAnchorY: Float = 0.86f,
     val injectionHz: Int = 24,
     val alternatePackets: Boolean = true,
+    val phoneMotion: Boolean = false,
     val scriptsEnabled: Boolean = false,
     val activePluginId: String = "builtin",
     val checkUpdatesOnLaunch: Boolean = true
@@ -75,6 +76,7 @@ class SettingsStore(context: Context) {
             fireAnchorY = f("fireAnchorY", defaults.fireAnchorY),
             injectionHz = prefs.getInt("injectionHz", defaults.injectionHz),
             alternatePackets = b("alternatePackets", defaults.alternatePackets),
+            phoneMotion = b("phoneMotion", defaults.phoneMotion),
             scriptsEnabled = b("scriptsEnabled", defaults.scriptsEnabled),
             activePluginId = s("activePluginId", defaults.activePluginId)
                 ?: defaults.activePluginId,
@@ -103,6 +105,7 @@ class SettingsStore(context: Context) {
             .putFloat("fireAnchorY", value.fireAnchorY)
             .putInt("injectionHz", value.injectionHz)
             .putBoolean("alternatePackets", value.alternatePackets)
+            .putBoolean("phoneMotion", value.phoneMotion)
             .putBoolean("scriptsEnabled", value.scriptsEnabled)
             .putString("activePluginId", value.activePluginId)
             .putBoolean("checkUpdatesOnLaunch", value.checkUpdatesOnLaunch)

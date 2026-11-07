@@ -3,6 +3,7 @@ package app.aircons.core
 import app.aircons.aap.AapClient
 import app.aircons.data.CalibrationState
 import app.aircons.data.ControlMode
+import app.aircons.data.MotionSample
 import app.aircons.data.SessionBus
 import app.aircons.data.SettingsStore
 import app.aircons.data.StemEvent
@@ -33,6 +34,16 @@ class ControllerEngine(
         )
         val settings = settingsStore.state.value
         val sample = tracker.process(raw, settings.smoothing) ?: return
+        applySample(sample)
+    }
+
+    fun onPhoneMotion(sample: MotionSample) {
+        SessionBus.setCalibration(CalibrationState.READY)
+        applySample(sample)
+    }
+
+    private fun applySample(sample: MotionSample) {
+        val settings = settingsStore.state.value
         SessionBus.setMotion(sample)
 
         val trigger = System.currentTimeMillis() < triggerUntil
@@ -80,6 +91,6 @@ class ControllerEngine(
     fun recenter() {
         tracker.beginCalibration()
         SessionBus.setCalibration(CalibrationState.COLLECTING)
-        SessionBus.setMotion(app.aircons.data.MotionSample.ZERO)
+        SessionBus.setMotion(MotionSample.ZERO)
     }
 }

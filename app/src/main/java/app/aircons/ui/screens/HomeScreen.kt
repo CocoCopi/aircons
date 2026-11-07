@@ -389,7 +389,8 @@ private fun ConnectionCard(
             }
             Spacer(Modifier.height(9.dp))
             Text(
-                deviceName ?: settings.targetName ?: "No pods selected",
+                if (settings.phoneMotion) "This phone"
+                else deviceName ?: settings.targetName ?: "No pods selected",
                 style = MaterialTheme.typography.headlineMedium,
                 color = Ink,
                 maxLines = 2,
@@ -398,12 +399,16 @@ private fun ConnectionCard(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                when (link) {
-                    LinkState.STREAMING -> "Streaming head motion at $pps Hz."
-                    LinkState.CONNECTED -> "Control link open. Waiting for motion."
-                    LinkState.CONNECTING -> "Opening the AirPods control channel…"
-                    LinkState.ERROR -> "Link error. Reconnect the pods and try again."
-                    LinkState.IDLE -> "Pair once in Android settings, then choose the pods here."
+                when {
+                    settings.phoneMotion && sessionActive ->
+                        "Phone motion fallback is driving the controller at $pps Hz."
+                    settings.phoneMotion ->
+                        "Fallback ready. Start a mode and tilt the phone to control the game."
+                    link == LinkState.STREAMING -> "Streaming head motion at $pps Hz."
+                    link == LinkState.CONNECTED -> "Control link open. Waiting for motion."
+                    link == LinkState.CONNECTING -> "Opening the AirPods control channel…"
+                    link == LinkState.ERROR -> "Link error. Reconnect the pods and try again."
+                    else -> "Pair once in Android settings, then choose the pods here."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = Muted,
@@ -441,7 +446,11 @@ private fun ConnectionCard(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Motion control needs AirPods Pro, AirPods 3 or newer.",
+                    if (settings.phoneMotion) {
+                        "Fallback uses this phone's gyroscope. AirPods L2CAP is bypassed."
+                    } else {
+                        "Motion control needs AirPods Pro, AirPods 3 or newer."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted
                 )
