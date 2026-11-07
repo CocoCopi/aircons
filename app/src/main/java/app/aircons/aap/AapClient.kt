@@ -68,6 +68,9 @@ class AapClient(
     private var watchdog: Job? = null
     private var generation = 0
 
+    @Volatile
+    private var socketPath = "none"
+
     private var packetWindowStart = 0L
     private var packetWindowCount = 0
     private var hiddenApiPrepared = false
@@ -79,43 +82,72 @@ class AapClient(
         running = true
         alternate = alternatePackets
         listener.onLink("Opening L2CAP 4097")
-        val timedOut = AtomicBoolean(false)
         worker = scope.launch {
             try {
                 val adapter = context.getSystemService(BluetoothManager::class.java).adapter
                     ?: throw IllegalStateException("This phone has no Bluetooth adapter.")
-                val newSocket = createL2capSocket(adapter, device)
-                socket = newSocket
-                val timeoutJob = scope.launch {
-                    delay(CONNECT_TIMEOUT_MS)
-                    if (!newSocket.isConnected) {
-                        timedOut.set(true)
-                        Log.w(TAG, "L2CAP connect timed out; closing socket")
-                        runCatching { newSocket.close() }
+                var lastError: Throwable? = null
+                var didTimeOut = false
+                for (insecure in listOf(true, false)) {
+                    if (!running || generation != session) return@launch
+                    val newSocket = try {
+                        createL2capSocket(adapter, device, insecure)
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "L2CAP socket creation failed (${modeName(insecure)}): ${t.message}")
+                        lastError = t
+                        continue
                     }
+                    socket = newSocket
+                    val timedOut = AtomicBoolean(false)
+                    val timeoutJob = scope.launch {
+                        delay(CONNECT_TIMEOUT_MS)
+                        if (!newSocket.isConnected) {
+                            timedOut.set(true)
+                            Log.w(TAG, "L2CAP connect timed out (${modeName(insecure)})")
+                            runCatching { newSocket.close() }
+                        }
+                    }
+                    try {
+                        newSocket.connect()
+                    } catch (t: Throwable) {
+                        lastError = t
+                    } finally {
+                        timeoutJob.cancel()
+                    }
+                    if (!newSocket.isConnected) {
+                        runCatching { newSocket.close() }
+                        socket = null
+                        if (timedOut.get()) didTimeOut = true
+                        continue
+                    }
+                    Log.i(
+                        TAG,
+                        "AAP connected via $socketPath (${modeName(insecure)})"
+                    )
+                    listener.onLink("AAP link open")
+                    openSession()
+                    readLoop(newSocket)
+                    return@launch
                 }
-                try {
-                    newSocket.connect()
-                } finally {
-                    timeoutJob.cancel()
+                if (didTimeOut) {
+                    throw IOException(
+                        "timeout on Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}, " +
+                            "${Build.MANUFACTURER} ${Build.MODEL})"
+                    )
                 }
-                if (!newSocket.isConnected) {
-                    throw IOException("socket did not connect")
-                }
-                listener.onLink("AAP link open")
-                openSession()
-                readLoop(newSocket)
+                throw lastError ?: IOException("no L2CAP socket could be opened")
             } catch (e: SecurityException) {
                 if (generation == session) {
                     fail("Bluetooth permission missing. Grant Nearby devices and try again.")
                 }
             } catch (e: Throwable) {
                 if (generation == session && running) {
-                    if (timedOut.get()) {
-                        fail(
-                            "Timed out opening the AirPods control link. Wake the pods, " +
-                                "connect them for audio in Bluetooth settings, then try again."
-                        )
+                    Log.e(
+                        TAG,
+                        "AAP connection failed: $socketPath, ${e.javaClass.simpleName}: ${e.message}"
+                    )
+                    if (e.message?.contains("timeout", ignoreCase = true) == true) {
+                        fail(timeoutMessage())
                     } else {
                         val detail = e.localizedMessage ?: e.javaClass.simpleName
                         fail(
@@ -127,6 +159,23 @@ class AapClient(
             } finally {
                 if (generation == session) running = false
             }
+        }
+    }
+
+    private fun modeName(insecure: Boolean) = if (insecure) "insecure" else "secure"
+
+    private fun timeoutMessage(): String {
+        val api = Build.VERSION.SDK_INT
+        val phone = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+        return if (api >= 37) {
+            "Timed out opening the AirPods control link on $phone (Android ${Build.VERSION.RELEASE}, " +
+                "API $api). Android 17 should support this. Check that no iPhone is holding the " +
+                "AirPods, keep both pods out of the case, then try again."
+        } else {
+            "Timed out opening the AirPods control link on $phone (Android ${Build.VERSION.RELEASE}, " +
+                "API $api). This Android build appears to be missing Google's March 2026 Bluetooth " +
+                "L2CAP fix. AirPods motion needs Android 17, Pixel Android 16 with the April 2026+ " +
+                "update, OxygenOS/ColorOS 16, or a rooted device with Xposed."
         }
     }
 
@@ -411,31 +460,42 @@ class AapClient(
         val types: Array<Class<*>>
     )
 
-    private fun createL2capSocket(adapter: BluetoothAdapter, device: BluetoothDevice): BluetoothSocket {
+    private fun createL2capSocket(
+        adapter: BluetoothAdapter,
+        device: BluetoothDevice,
+        insecure: Boolean
+    ): BluetoothSocket {
         prepareHiddenApi()
-        val uuid = ParcelUuid.fromString(AapPackets.SERVICE_UUID)
-        val type = 3
         val psm = AapPackets.PSM
+        val uuid = ParcelUuid.fromString(AapPackets.SERVICE_UUID)
 
-        runCatching {
-            val socket = HiddenApiBypass.invoke(
-                BluetoothDevice::class.java,
-                device,
-                "createL2capSocket",
-                psm
-            ) as? BluetoothSocket
-            if (socket != null) return socket
+        tryPublicSocket(device, psm, insecure)?.let {
+            socketPath = "public API"
+            return it
         }
 
+        val hiddenName = if (insecure) "createInsecureL2capSocket" else "createL2capSocket"
+        val hidden = runCatching {
+            HiddenApiBypass.invoke(
+                BluetoothDevice::class.java,
+                device,
+                hiddenName,
+                psm
+            ) as? BluetoothSocket
+        }.getOrNull()
+        if (hidden != null) {
+            socketPath = hiddenName
+            return hidden
+        }
+
+        val auth = !insecure
         val attempts = listOf(
-            socketAttempt("direct PSM", type, -1, true, true, device, psm, null),
-            socketAttempt("direct PSM + UUID", type, -1, true, true, device, psm, uuid),
-            socketAttempt("A16 adapter-first", adapter, device, type, true, true, psm, uuid),
-            socketAttempt("device-first", device, type, true, true, psm, uuid),
-            socketAttempt("device fd-first", device, type, -1, true, true, psm, uuid),
-            socketAttempt("legacy fd-one", type, 1, true, true, device, psm, uuid),
-            socketAttempt("five-arg", type, true, true, device, psm, uuid),
-            socketAttempt("device-first direct", device, type, true, true, psm, null)
+            socketAttempt("device-first", device, 3, auth, auth, psm, uuid),
+            socketAttempt("adapter-first", adapter, device, 3, auth, auth, psm, uuid),
+            socketAttempt("old fd-first", 3, -1, auth, auth, device, psm, uuid),
+            socketAttempt("old direct", 3, -1, auth, auth, device, psm, null),
+            socketAttempt("old fd-one", 3, 1, auth, auth, device, psm, uuid),
+            socketAttempt("five-arg", 3, auth, auth, device, psm, uuid)
         )
         val failures = mutableListOf<String>()
         for (attempt in attempts) {
@@ -444,27 +504,46 @@ class AapClient(
                     BluetoothSocket::class.java,
                     *attempt.args
                 ) as? BluetoothSocket
-                if (socket != null) return socket
+                if (socket != null) {
+                    socketPath = attempt.label
+                    return socket
+                }
                 failures += "${attempt.label}: not a BluetoothSocket"
             } catch (t: Throwable) {
                 failures += "${attempt.label}: ${t.javaClass.simpleName}"
-                try {
-                    val constructor = BluetoothSocket::class.java
-                        .getDeclaredConstructor(*attempt.types)
-                    constructor.isAccessible = true
-                    return constructor.newInstance(*attempt.args) as BluetoothSocket
-                } catch (direct: Throwable) {
-                    if (failures.size == 1) {
-                        failures[0] = "${attempt.label}: ${direct.javaClass.simpleName}"
-                    }
-                }
             }
         }
-        Log.e(TAG, "L2CAP socket attempts: ${failures.joinToString("; ")}")
+        Log.e(TAG, "L2CAP socket attempts (${modeName(insecure)}): ${failures.joinToString("; ")}")
         throw IllegalStateException(
             "Android ${Build.VERSION.RELEASE} blocked the private Classic L2CAP socket. " +
                 "Please report this build with a logcat capture."
         )
+    }
+
+    private fun tryPublicSocket(
+        device: BluetoothDevice,
+        psm: Int,
+        insecure: Boolean
+    ): BluetoothSocket? {
+        return runCatching {
+            val settingsClass = Class.forName("android.bluetooth.BluetoothSocketSettings")
+            val builderClass = Class.forName("android.bluetooth.BluetoothSocketSettings\$Builder")
+            val builder = builderClass.getDeclaredConstructor().newInstance()
+            builderClass.getMethod("setSocketType", Int::class.javaPrimitiveType)
+                .invoke(builder, 3)
+            builderClass.getMethod("setL2capPsm", Int::class.javaPrimitiveType)
+                .invoke(builder, psm)
+            builderClass.getMethod("setAuthenticationRequired", Boolean::class.javaPrimitiveType)
+                .invoke(builder, !insecure)
+            builderClass.getMethod("setEncryptionRequired", Boolean::class.javaPrimitiveType)
+                .invoke(builder, !insecure)
+            val settings = builderClass.getMethod("build").invoke(builder)
+            val create = BluetoothDevice::class.java.getMethod(
+                "createUsingSocketSettings",
+                settingsClass
+            )
+            create.invoke(device, settings) as BluetoothSocket
+        }.getOrNull()
     }
 
     private fun prepareHiddenApi() {
@@ -494,6 +573,6 @@ class AapClient(
 
     companion object {
         private const val TAG = "AirConsAap"
-        private const val CONNECT_TIMEOUT_MS = 12_000L
+        private const val CONNECT_TIMEOUT_MS = 6_000L
     }
 }
